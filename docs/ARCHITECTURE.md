@@ -21,11 +21,11 @@ Node.js API ── Gmail OAuth / read-only messages
   │               │
   │          validate JSON, save encrypted result
   │               │
-  ├── encrypted SQLite ◄─┘
+  ├── encrypted MongoDB ◄─┘
   └── private Expo push → Android notification → email detail
 ```
 
-Node is a practical choice for this I/O-heavy service and keeps one language across the project. FastAPI would also work; Python is not necessary merely because an external model is involved. SQLite keeps a personal deployment simple. A multi-user service should use authenticated user sessions, a relational tenant model, a job queue, and isolated worker processing.
+Node is a practical choice for this I/O-heavy service and keeps one language across the project. FastAPI would also work; Python is not necessary merely because an external model is involved. MongoDB Atlas keeps storage independent of the Render filesystem. A multi-user service should use authenticated user sessions, a relational tenant model, a job queue, and isolated worker processing.
 
 ## Reducing model usage
 
@@ -43,7 +43,7 @@ No artificial percentage savings is claimed. Compare real token usage on a repre
 
 ## Privacy and security
 
-Google access/refresh tokens, saved metadata, summaries, cache entries, device tokens, and settings are encrypted as individual SQLite values with AES-256-GCM and random nonces. Raw email bodies are processed in memory and not saved. Model output is treated as plain text, validated, and never executed. Gmail permissions are read-only. Read/archive operations affect Briefmail only.
+Google access/refresh tokens, saved metadata, summaries, cache entries, device tokens, and settings are encrypted as individual MongoDB document values with AES-256-GCM and random nonces. Raw email bodies are processed in memory and not saved. Model output is treated as plain text, validated, and never executed. Gmail permissions are read-only. Read/archive operations affect Briefmail only.
 
 The model receives untrusted email content with explicit instructions not to follow it. This reduces instruction injection risk; it does not guarantee correct classification. The model has no tools or permissions to act on email. Gemini processing is an external transfer and requires the in-app analysis setting. Ollama processing uses the configured server endpoint. Notification payloads contain only generic copy and a message ID.
 
@@ -51,7 +51,7 @@ The personal server's static bearer token is not a multi-user authentication sys
 
 ## Failure handling and remaining limits
 
-- Sync locking prevents concurrent processing in one Node process. Do not run multiple API replicas on this SQLite database.
+- Sync locking prevents concurrent processing in one Node process. The Atlas store adds a database lease around mutations and syncs to protect against overlapping deploys. Keep one service instance for this personal app.
 - Page cursors advance only after all fetched messages finish. A failed model request can hold a page until the issue is resolved or the daily limit resets.
 - Polling is used instead of Gmail Pub/Sub history synchronization. A large historical backfill can delay new-message processing. A production service should prioritize new arrivals and use history IDs with watch renewal.
 - Sync requests can exceed a client's timeout during a large/slow batch. The server continues processing; check status/refresh before retrying.
@@ -74,3 +74,13 @@ Each linked Gmail address has its own encrypted storage namespace, OAuth tokens,
 The API returns account metadata without tokens. Reauthorizing an existing email updates credentials in place. Existing single-account data migrates into a legacy account namespace before syncing. Account deletion removes its entire namespace, including cached summaries, without clearing shared device preferences or other accounts.
 
 Sync rotates its starting account, processes accounts separately, and reports per-account errors while allowing healthy accounts to continue. The daily request allowance remains shared across accounts.
+
+## Atlas storage implementation
+
+The asynchronous storage adapter uses one MongoClient per process, a pool of up to five application connections, and finite database timeouts. `encrypted_values` stores unique string keys in MongoDB `_id` fields with AES-256-GCM ciphertext values. No database URI or raw driver error is sent to the phone or logged at startup. An encrypted marker detects an incorrect encryption key on restart. Writes are awaited before a successful API response, cursor advancement, or model request reservation.
+
+`operation_locks` holds a renewable 90-second write lease; an AsyncLocalStorage context permits nested calls within the same operation. Requests to read status and summaries remain available while syncing. Leases reduce overlapping-deployment races but are not multi-record transactions: a process crash can still leave partially completed linking or disconnect operations. Keep one personal backend instance.
+
+Mail lists remain stored as an encrypted value per account. Individual plaintext values are limited to 10 MiB to stay below MongoDB's document size ceiling after encoding. Very large backfills require a future per-message storage redesign. There is no claim of unlimited storage; Atlas free quotas apply.
+
+Switching storage does not automatically upload any existing local SQLite database. Reconnect Gmail in the new Atlas-backed deployment to regenerate summaries. Keep any old SQLite file and encryption key if historical local state must be recovered later. No existing local database is deleted by this change.

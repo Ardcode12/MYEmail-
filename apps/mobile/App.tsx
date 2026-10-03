@@ -9,7 +9,7 @@ import { Poppins_500Medium } from '@expo-google-fonts/poppins/500Medium';
 import { Poppins_600SemiBold } from '@expo-google-fonts/poppins/600SemiBold';
 import { Poppins_700Bold } from '@expo-google-fonts/poppins/700Bold';
 import Constants from 'expo-constants';
-import { api, readConnection, saveConnection } from './src/api';
+import { api, readConnection, saveConnection, DEFAULT_CONNECTION } from './src/api';
 import { demoMails, demoAccounts } from './src/demo';
 import type { Connection, Mail, ServerStatus, Settings, LinkedAccount } from './src/types';
 
@@ -28,16 +28,17 @@ function Inbox() {
   const c = palettes[theme];
   const [fonts, fontError] = useFonts({ Poppins_400Regular, Poppins_500Medium, Poppins_600SemiBold, Poppins_700Bold });
   const [tab, setTab] = useState<'Today' | 'Inbox' | 'Settings'>('Today');
-  const [connection, setConnection] = useState<Connection | null>(null);
-  const [mails, setMails] = useState<Mail[]>(demoMails);
+  const [connection, setConnection] = useState<Connection | null>(DEFAULT_CONNECTION);
+  const [mails, setMails] = useState<Mail[]>([]);
   const [status, setStatus] = useState<ServerStatus | null>(null);
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState('All');
   const [selected, setSelected] = useState<Mail | null>(null);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState('');
-  const [serverUrl, setServerUrl] = useState('');
-  const [serverToken, setServerToken] = useState('');
+  const [serverUrl, setServerUrl] = useState(DEFAULT_CONNECTION.url);
+  const [serverToken, setServerToken] = useState(DEFAULT_CONNECTION.token);
+  const [showServerConfig, setShowServerConfig] = useState(false);
   const [accountFilter, setAccountFilter] = useState('all');
   const [removeTarget, setRemoveTarget] = useState<LinkedAccount | null>(null);
   const [sampleAccounts, setSampleAccounts] = useState(demoAccounts);
@@ -56,7 +57,17 @@ function Inbox() {
     setMails(nextMails); setStatus(nextStatus);
     setAccountFilter(current => current === 'all' || nextStatus.accounts.some(a => a.id === current) ? current : 'all');
   }
-  useEffect(() => { readConnection().then(async saved => { if (saved) { setConnection(saved); setMails([]); setServerUrl(saved.url); await refresh(saved); } }).catch(e => setNotice(e.message)); }, []);
+  useEffect(() => {
+    readConnection().then(async saved => {
+      const conn = saved || DEFAULT_CONNECTION;
+      if (conn) {
+        setConnection(conn);
+        setServerUrl(conn.url);
+        setServerToken(conn.token);
+        await refresh(conn);
+      }
+    }).catch(e => setNotice(e.message));
+  }, []);
   useEffect(() => {
     const sub = AppState.addEventListener('change', state => { if (state === 'active' && connection) refresh().catch(e => setNotice(e.message)); });
     return () => sub.remove();
@@ -167,17 +178,35 @@ function Inbox() {
         <Text style={text(28, 'semibold')}>Make room for you.</Text><Text style={[text(12, 'regular', c.muted), { marginTop: 6, marginBottom: 24 }]}>Your inbox. Your preferences.</Text>
         <Text style={[text(12, 'semibold'), { marginBottom: 12 }]}>YOUR CONNECTION</Text>
         <View style={[s.panel, { backgroundColor: c.card, borderColor: c.border }]}>
-          <View style={s.row}><Icon name="server" color={c.accent} /><Text style={text(14, 'semibold')}>{connection ? 'Server connected' : 'Connect your server'}</Text></View>
-          <Text style={[text(11, 'regular', c.muted), { lineHeight: 19, marginVertical: 12 }]}>{connection ? `${connection.url}\n${linkedAccounts.length} Gmail account(s) linked` : 'Enter your backend URL and private access token. Your Gemini key stays on your server.'}</Text>
-          {!connection && <><Text style={text(11, 'medium')}>Server URL</Text><TextInput accessibilityLabel="Server URL" autoCapitalize="none" keyboardType="url" placeholder="https://mail.your-domain.com" placeholderTextColor={c.muted} value={serverUrl} onChangeText={setServerUrl} style={[s.input, text(12), { borderColor: c.border }]} /><Text style={text(11, 'medium')}>Server access token</Text><TextInput accessibilityLabel="Server access token" autoCapitalize="none" secureTextEntry placeholder="APP_TOKEN from your server" placeholderTextColor={c.muted} value={serverToken} onChangeText={setServerToken} style={[s.input, text(12), { borderColor: c.border }]} /><Button label="Connect server" icon="link" onPress={() => void run(async () => {
-            const url = serverUrl.trim().replace(/\/$/, ''); const parsed = new URL(url);
-            if (parsed.protocol !== 'https:' && !(__DEV__ && ['localhost', '127.0.0.1', '10.0.2.2'].includes(parsed.hostname))) throw new Error('Use an HTTPS server URL to protect your access token.');
-            if (parsed.username || parsed.password || parsed.search || parsed.hash || parsed.pathname !== '/') throw new Error('Enter only your server origin, such as https://mail.example.com');
-            if (serverToken.trim().length < 32) throw new Error('Enter the complete server access token (at least 32 characters).');
-            const conn = { url, token: serverToken.trim() }; await refresh(conn); await saveConnection(conn); setConnection(conn); setServerToken(''); setNotice('Server connected. Enable email analysis below, then connect Gmail.');
-          })} /></>}
-          {connection && <Button label={linkedAccounts.length ? 'Add another Gmail account' : 'Connect Gmail'} onPress={() => void run(async () => { if (!prefs.analysisConsent) throw new Error('Enable email analysis below before connecting Gmail.'); const result = await api<{ url: string }>(connection, '/auth/google', 'POST'); await Linking.openURL(result.url); })} icon="mail" />}
-          {connection && <View style={{ marginTop: 12 }}><Button label="Refresh connection" secondary onPress={() => void run(() => refresh())} /></View>}
+          <View style={s.row}><Icon name="mail" color={c.accent} /><Text style={text(14, 'semibold')}>Gmail Account</Text></View>
+          <Text style={[text(11, 'regular', c.muted), { lineHeight: 19, marginVertical: 12 }]}>{linkedAccounts.length ? `${linkedAccounts.length} account(s) connected to Briefmail.` : 'Connect your Gmail to begin receiving AI summaries and briefings.'}</Text>
+          <Button label={linkedAccounts.length ? 'Add another Gmail account' : 'Connect Gmail'} onPress={() => void run(async () => {
+            const conn = connection || DEFAULT_CONNECTION;
+            if (!prefs.analysisConsent) {
+              await updateSettings({ analysisConsent: true });
+            }
+            const result = await api<{ url: string }>(conn, '/auth/google', 'POST');
+            await Linking.openURL(result.url);
+          })} icon="mail" />
+          <View style={{ marginTop: 12 }}><Button label="Refresh connection" secondary onPress={() => void run(() => refresh())} /></View>
+          <Pressable onPress={() => setShowServerConfig(!showServerConfig)} style={{ marginTop: 14, alignItems: 'center' }}>
+            <Text style={text(11, 'medium', c.muted)}>{showServerConfig ? 'Hide custom server ▲' : 'Custom server settings ▼'}</Text>
+          </Pressable>
+          {showServerConfig && <View style={{ marginTop: 12, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: c.border, paddingTop: 12 }}>
+            <Text style={[text(10, 'regular', c.muted), { marginBottom: 8 }]}>Backend: {connection?.url || DEFAULT_CONNECTION.url}</Text>
+            <Text style={text(11, 'medium')}>Server URL</Text>
+            <TextInput accessibilityLabel="Server URL" autoCapitalize="none" keyboardType="url" value={serverUrl} onChangeText={setServerUrl} style={[s.input, text(12), { borderColor: c.border }]} />
+            <Text style={text(11, 'medium')}>Server access token</Text>
+            <TextInput accessibilityLabel="Server access token" autoCapitalize="none" secureTextEntry value={serverToken} onChangeText={setServerToken} style={[s.input, text(12), { borderColor: c.border }]} />
+            <Button label="Save server" secondary onPress={() => void run(async () => {
+              const url = serverUrl.trim().replace(/\/$/, '');
+              const conn = { url, token: serverToken.trim() };
+              await refresh(conn);
+              await saveConnection(conn);
+              setConnection(conn);
+              setNotice('Server updated.');
+            })} />
+          </View>}
         </View>
         <Text style={[text(12, 'semibold'), { marginBottom: 12 }]}>LINKED GMAIL ACCOUNTS{demo ? ' · DEMO' : ''}</Text>
         {linkedAccounts.map(account => <View key={account.id} style={[s.panel, { backgroundColor: c.card, borderColor: c.border }]}>

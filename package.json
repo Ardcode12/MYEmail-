@@ -1,1 +1,17 @@
-{"name":"briefmail","private":true,"workspaces":["apps/mobile"],"scripts":{"server":"node --env-file=server/.env server/src/index.mjs","test":"node --test server/test/*.test.mjs","mobile":"npm start --workspace apps/mobile","typecheck":"npm run typecheck --workspace apps/mobile"},"engines":{"node":">=24"}}
+{
+  "name": "briefmail",
+  "private": true,
+  "workspaces": [
+    "apps/mobile"
+  ],
+  "scripts": {
+    "server": "node --env-file=server/.env server/src/index.mjs",
+    "test": "node --test server/test/*.test.mjs",
+    "mobile": "npm start --workspace apps/mobile",
+    "typecheck": "npm run typecheck --workspace apps/mobile",
+    "server:install": "npm ci --prefix server"
+  },
+  "engines": {
+    "node": ">=24"
+  }
+}

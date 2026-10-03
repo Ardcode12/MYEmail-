@@ -60,25 +60,28 @@ Polling defaults to two minutes. Processing backlogs, provider errors, daily lim
 
 For a Play Store artifact, use `npx eas-cli build --platform android --profile production`. Store signing, privacy disclosures, OAuth verification, and device testing remain release tasks.
 
-## 5. Hosting
+## 5. Render Free + MongoDB Atlas Free
 
-Run one Node process per database. Place the API behind an HTTPS reverse proxy, allow only the intended public routes, and apply connection/request rate limits at the proxy. The default server binds `127.0.0.1:8787`. Use a process supervisor for restarts. Keep `server/.env` readable only by the service user.
+Follow [ATLAS.md](ATLAS.md). No persistent disk is needed. Deploy as a Docker Web Service with repository root as build context and `server/Dockerfile` as the Dockerfile path. The Dockerfile installs the backend-only locked MongoDB dependency and runs Node 24.
 
-Back up the encrypted SQLite database and its encryption key separately; losing the key makes saved data unreadable. The key is intentionally not stored in the database. Protect backups and host disks. Disconnect deletes app records, but it cannot erase independent backups or provider-side logs.
+Set `MONGODB_URI`, `MONGODB_DB=briefmail`, and your existing Google/Gemini/app variables in Render's Environment panel. `PUBLIC_URL` must be the actual HTTPS service URL. Keep `ENCRYPTION_KEY` stable across redeployments: losing it makes existing database values unreadable.
 
-For Docker, build at the repository root and pass secrets from your local env file:
+Use one service instance. MongoDB-backed leases prevent overlapping requests or deploys from writing at the same time; a competing writer gets a retryable busy response. A crashed writer's lease expires after 90 seconds. This remains a personal service, not a multi-user backend.
+
+`BACKGROUND_SYNC=false` is recommended for your free testing setup. The app's Sync inbox button works after Render wakes. Atlas keeps your data across restarts, but Render's free instance still sleeps and cannot reliably process emails or send notifications continuously. No keep-alive workaround is configured.
+
+For local Docker testing:
 
 ```bash
 docker build -t briefmail-api -f server/Dockerfile .
-docker volume create briefmail-data
-docker run --rm --env-file server/.env -e HOST=0.0.0.0 -p 127.0.0.1:8787:8787 -v briefmail-data:/app/server/data briefmail-api
+docker run --rm --env-file server/.env -e HOST=0.0.0.0 -p 127.0.0.1:8787:8787 briefmail-api
 ```
 
-Use an HTTPS reverse proxy in front of the mapped loopback port.
+The MongoDB URI stays server-side. Do not upload `.env` or put database credentials in the mobile app. Keep a secure backup of your encryption key and manage database backups separately. Free-tier storage and compute quotas still apply.
 
 ## 6. Backfill and operating limits
 
-`GMAIL_QUERY` defaults to `in:inbox newer_than:30d`. Use `in:inbox` for the whole inbox, or `-in:sent -in:drafts` for received mail beyond the inbox (spam/trash are not included by Gmail's default listing). Restart after changing configuration. The server saves 25-message page cursors and repeatedly polls. Large backfills can span days under the daily cap. It does not index attachments.
+`GMAIL_QUERY` defaults to `in:inbox newer_than:30d`. Use `in:inbox` for the whole inbox, or `-in:sent -in:drafts` for received mail beyond the inbox (spam/trash are not included by Gmail's default listing). Restart after changing configuration. The server saves 25-message page cursors. Each manual sync processes a page per account; optional polling repeats this while the backend is awake. Large backfills can span days under the daily cap. It does not index attachments.
 
 Development HTTP pairing is limited to localhost/Android emulator origins. Production pairing requires HTTPS. `APP_TOKEN` is an administrator-level bearer credential for this single-user deployment: do not share it between users. A public multi-user product needs per-user identity and tenant isolation before deployment.
 

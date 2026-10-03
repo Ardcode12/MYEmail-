@@ -21,7 +21,7 @@ Browser preview is for the UI. Native push and persistent secure credentials are
 
 ## Start the backend
 
-Requires Node.js 24 or newer, including its built-in SQLite support. No third-party server runtime packages are required.
+Requires Node.js 24 or newer and MongoDB Atlas. Install the backend driver with `npm run server:install`. The backend no longer uses a local SQLite file or a Render persistent disk.
 
 ```bash
 cp server/.env.example server/.env
@@ -29,13 +29,13 @@ openssl rand -hex 32
 openssl rand -hex 32
 ```
 
-Put the two separate random values in `APP_TOKEN` and `ENCRYPTION_KEY`. Fill the Google OAuth credentials and Gemini API key in `server/.env`, then:
+Put the two separate random values in `APP_TOKEN` and `ENCRYPTION_KEY`. Set `MONGODB_URI` and `MONGODB_DB` using [the Atlas guide](docs/ATLAS.md). Fill the Google OAuth credentials and Gemini API key in `server/.env`, then:
 
 ```bash
 npm run server
 ```
 
-Keep the server running for background sync and notifications. The default bind address is loopback; deploy behind an HTTPS reverse proxy. Set `PUBLIC_URL` to the public HTTPS origin. Never put the Gemini key or Google client secret in the mobile app. Enter the HTTPS origin and `APP_TOKEN` in the app's Settings, enable analysis consent, and connect Gmail.
+For Render Free, the example configuration uses `BACKGROUND_SYNC=false`: open the app and tap Sync inbox. Set it to `true` to poll while the server is awake; it does not prevent Render from sleeping. The default bind address is loopback; deploy behind an HTTPS reverse proxy. Set `PUBLIC_URL` to the public HTTPS origin. Never put the Gemini key or Google client secret in the mobile app. Enter the HTTPS origin and `APP_TOKEN` in the app's Settings, enable analysis consent, and connect Gmail.
 
 Read [SETUP.md](docs/SETUP.md) for Google OAuth, Gemini/Ollama, Android push credentials, APK builds, and deployment. See [ARCHITECTURE.md](docs/ARCHITECTURE.md) for cost controls, data handling, and known limitations.
 
@@ -48,7 +48,7 @@ Read [SETUP.md](docs/SETUP.md) for Google OAuth, Gemini/Ollama, Android push cre
 - Multiple linked Gmail accounts, combined inbox and account filters, per-account notifications and disconnect.
 - Gmail OAuth with one-time expiring state, offline refresh, bounded paginated sync.
 - Gemini and Ollama adapters with structured output and runtime validation.
-- Encrypted SQLite values for credentials, metadata, summaries, and settings.
+- Encrypted MongoDB values for credentials, metadata, summaries, and settings.
 - Persistent cache, per-day request limits, bounded inputs/outputs, sync locking.
 - Server polling and private Expo push alerts with retryable notification outbox.
 - Individual-account or all-account disconnect, Google token revocation, and saved-data deletion.
@@ -62,5 +62,5 @@ cd apps/mobile
 npx expo export --platform android
 ```
 
-Backend tests use fake email/model/push services and a temporary localhost HTTP server. They do not access Gmail or spend AI credits. `expo export` validates JavaScript bundling; it does not build or test a native APK.
+Backend tests use fake email/model/push services and a temporary localhost HTTP server. Set `TEST_MONGODB_URI` to a disposable local MongoDB instance to exercise real persistence as well (test databases are created and deleted). Without it, database tests use an in-memory collection double and the real-connection test is skipped. They do not access Gmail or spend AI credits. `expo export` validates JavaScript bundling; it does not build or test a native APK.
 # MYEmail-
