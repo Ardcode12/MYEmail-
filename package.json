@@ -1,0 +1,1 @@
+{"name":"briefmail","private":true,"workspaces":["apps/mobile"],"scripts":{"server":"node --env-file=server/.env server/src/index.mjs","test":"node --test server/test/*.test.mjs","mobile":"npm start --workspace apps/mobile","typecheck":"npm run typecheck --workspace apps/mobile"},"engines":{"node":">=24"}}

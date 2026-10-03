@@ -1,0 +1,11 @@
+node_modules/
+.expo/
+dist/
+.env
+.env.*
+!.env.example
+server/data/
+*.log
+*service-account*.json
+*firebase-adminsdk*.json
+apps/mobile/google-services.json

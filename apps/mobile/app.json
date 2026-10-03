@@ -1,0 +1,25 @@
+{
+  "expo": {
+    "name": "Briefmail",
+    "slug": "briefmail",
+    "version": "0.1.0",
+    "scheme": "briefmail",
+    "orientation": "portrait",
+    "userInterfaceStyle": "automatic",
+    "android": {
+      "package": "com.briefmail.app",
+      "permissions": [
+        "POST_NOTIFICATIONS"
+      ]
+    },
+    "plugins": [
+      "expo-font",
+      "expo-secure-store",
+      "expo-notifications",
+      "expo-status-bar"
+    ],
+    "web": {
+      "bundler": "metro"
+    }
+  }
+}

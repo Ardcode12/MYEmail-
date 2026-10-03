@@ -1,0 +1,1 @@
+{"cli":{"version":">=16.0.0"},"build":{"development":{"developmentClient":false,"distribution":"internal","android":{"buildType":"apk"}},"production":{"android":{"buildType":"app-bundle"}}}}
